@@ -1,0 +1,715 @@
+---
+title: "Exploratory Data Analysis - _MovieLens_ Dataset"
+subtitle: "A preliminary EDA for a Movie Recommendation Model Simulation"
+author: "Francisco Silva, Gonçalo Araújo"
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    toc: yes
+    toc_depth: 2
+    number_sections: false
+    extra_dependencies: ["microtype", "relsize"]
+    citation_package: natbib
+  word_document:
+    toc: yes
+    toc_depth: '2'
+  html_document:
+    toc: yes
+    toc_depth: 2
+    df_print: kable
+header-includes:
+  - \AtBeginDocument{\scriptsize}
+  - \usepackage{etoolbox}
+  - \AtBeginEnvironment{verbatim}{\scriptsize}
+  - \AtBeginEnvironment{verbatim*}{\scriptsize}
+  - \newcommand{\blankline}{\vspace{\baselineskip}}
+bibliography: references.bib
+---
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, width = 80) 
+knitr::opts_chunk$set(comment = NA)
+```
+
+\newpage
+
+# 1. Introduction {#introduction}
+
+**Recommender Systems (RSs)** are software tools and techniques providing suggestions for items to be of use to a user [@ricci2015recommender].
+
+Recommendation models are algorithms designed to suggest items to users based on their preferences and past behavior.
+
+These systems are widely used in applications such as **Netflix**, which recommends movies and shows based on users' viewing history, or **Cartão Continente**, where products are suggested based on previous purchases.
+
+These algorithms help personalize user experiences by predicting which items a user might like or find useful, leading to better user engagement and satisfaction.
+
+One popular approach to building recommendation systems consists on using **Singular Value Decomposition (SVD)**, a matrix factorization technique that reduces the dimensionality of user-item interaction data [@koren2009matrix]. This allows uncovering latent factors that explain the relationships between users and items, making it an ideal technique for collaborative filtering-based recommendation models.
+
+To develop a Netflix-like movie recommendation system, access to data containing user ratings is crucial. While the original Netflix Prize Dataset [@netflixprizedataset] is no longer officially available, other datasets similar in nature can be found on platforms like Kaggle, which hosts a diverse array of datasets for machine learning and recommendation system research .
+
+Among the various alternatives available on Kaggle, we have selected the **MovieLens dataset**[@harper2015movielens], which is also hosted by GroupLens [@movielensdataset]. This dataset is widely recognized as one of the most accessible and commonly utilized resources for constructing movie recommendation systems.
+
+The MovieLens 100K dataset, which consists of 100,000 ratings from 1,000 users on 1,700 movies, provides an excellent foundation for model development due to its manageable computational demands. This stable benchmark dataset was released in April 1998.Analyzing this dataset enables the extraction of user preferences and movie characteristics, which can subsequently be used to predict the movies that users are likely to enjoy.
+
+Before implementing a recommendation model, however, it is essential to perform **Exploratory Data Analysis (EDA)**.
+
+EDA helps us understand the structure and properties of the data, identify potential patterns or anomalies, and ensure data quality. This step is crucial because a well-prepared dataset leads to better, more reliable models.
+
+In the context of the MovieLens dataset, EDA may help us **understand user rating behavior, the distribution of movie genres, and how demographic factors like age and gender influence movie preferences**.
+
+This analysis will provide insights into the data's underlying structure, which can then guide the design and simulation of an effective recommendation system, a task the authors plan to undertake as part of another ECAD master's course.
+
+This project will be conducted using the **RStudio IDE**, employing **RMarkdown** [@RMarkdown], and rendered to PDF with **Knitr** [@knitr].
+
+[Go back to Top](#introduction)
+
+
+# 2. Dataset Description
+
+MovieLens data sets were collected by the GroupLens Research Project at the University of Minnesota [@harper2015movielens]
+
+This data set consists of: 100,000 ratings (1-5) from 943 users on 1682 movies.
+
+-   Each user has rated at least 20 movies.
+
+-   Simple demographic info for the users (age, gender, occupation, zip)
+
+The data was collected through the MovieLens web site (movielens.umn.edu) during the seven-month period from September 19th,1997 through April 22nd, 1998. This data has been cleaned up - users who had less than 20 ratings or did not have complete demographic information were removed.
+
+The version used on this work has been downloaded from Kaggle [@MovieLens100k].The original dataset consists of several text tab separated files, from which we used the following ones:
+
+**u.data** -- The full *u.data* set, 100000 ratings by 943 users on 1682 items. Each user has rated at least 20 movies.\
+Users and items are numbered consecutively from 1.\
+The data is randomly ordered.This is a tab separated list of: *user id \| item id \| rating \| timestamp*.\
+The time stamps are unix seconds since 1/1/1970 UTC
+
+**u.item** -- Information about the items (movies);\
+This is a tab separated list of: *movie id \| movie title \| release date \| video release date \|* *IMDb URL \| unknown \| Action \| Adventure \| Animation \|Children's \| Comedy \| Crime \| Documentary \| Drama \| Fantasy \|Film-Noir \| Horror \| Musical \| Mystery \| Romance \| Sci-Fi \|Thriller \| War \| Western \|* .
+
+The last 19 fields are the genres, a 1 indicates the movie is of that genre, a 0 indicates it is not;\
+Movies can be in several genres at once.The movie ids are the ones used in the *u.data* data set.
+
+**u.user** -- Demographic information about the users;\
+This is a tab separated list of: *user id \| age \| gender \| occupation \| zip code*.\
+The user ids are the ones used in the *u.data* data set.
+
+## 2.1 - Loading the Data
+
+We start by loading into R dataframes, the downloaded files:
+\blankline
+```{r}
+ratings <- read.table("data/ml-100k/u.data", sep="\t", 
+                      col.names=c("user_id", "item_id", "rating", "timestamp"))
+
+users <- read.table("data/ml-100k/u.user", sep="|", 
+                    col.names=c("user_id", "age", "gender", "occupation", "zip_code"))
+
+movies <- read.table("data/ml-100k/u.item", sep="|", 
+           col.names=c("item_id", "movie_title", "release_date", "video_release_date", 
+                 "IMDb_URL", "unknown", "Action", "Adventure", "Animation", "Children", 
+                 "Comedy", "Crime", "Documentary", "Drama", "Fantasy", "Film_Noir", 
+                 "Horror", "Musical", "Mystery", "Romance", "Sci_Fi", "Thriller", 
+                 "War", "Western"),
+             fill = TRUE, encoding = "latin1", quote="")
+```
+
+
+The next step is to merge the loaded data into a single dataframe, using the *R merge* function:
+\blankline
+```{r}
+merged_df <- merge(ratings, users, by = "user_id", all.x = TRUE)
+merged_df <- merge(merged_df, movies, by = "item_id", all.x = TRUE)
+```
+
+
+[Go back to Top](#introduction)
+
+## 2.2 - Initial Data Inspection
+
+Let's inspect the data in order to understand its structure. (In order to obtain a cleaner PDF render we will use the R **xtable** library to convert an R object to an xtable object, which can then be printed as a LaTeX or HTML table). View the first rows:
+\blankline
+```{r, results='asis'}
+library(xtable)
+print(xtable(head(merged_df), caption = "Sample Dataframe"), include.rownames = FALSE,comment = FALSE,size = "tiny")
+```
+
+and get a summary of the dataframe:
+\blankline
+
+```{r}
+str(merged_df)
+```
+
+
+The dataframe consists of 100 000 observations of 31 variables, with the following data type/classes:
+\blankline
+```{r}
+data_types <- sapply(merged_df, class)
+data_type_count <- table(data_types)
+print(data_type_count)
+```
+
+[Go back to Top](#introduction)
+
+## 2.3 - Data Transformation and Cleaning
+
+Since we will not be working with the following variables, as they are irrelevant to our analysis, and in order to reduce the number of columns to be analyzed, we will **remove** the following columns:
+
+-   **zip_code**
+
+-   **release_date**
+
+-   **video_release_date**
+
+-   **IMDb_URL**
+
+-   **occupation**     
+\blankline
+```{r}
+columns_to_remove <- c("zip_code", "release_date", "video_release_date","IMDb_URL", "occupation")  
+merged_df <- merged_df[, !(names(merged_df) %in% columns_to_remove)]
+```
+
+                         
+In order to have a broader range of variable types and to facilitate the subsequent exploratory analysis, we will make the following type conversions:
+
+-   **Rating**: convert to a factor so that it can be treated as an ordinal variable, meaning a categorical variable with defined order categories.
+
+-   **Age**: treat as a continuous variable.
+
+-   **Timestamp**: convert to date.   
+\blankline
+```{r}
+merged_df$rating <- factor(merged_df$rating, 
+                      levels = c(1, 2, 3, 4, 5), 
+                      ordered = TRUE)
+merged_df$age <- as.numeric(merged_df$age)
+merged_df$timestamp <- as.Date(as.POSIXct(merged_df$timestamp, origin = "1970-01-01"))
+```
+
+Now let's check for **missing values** and handle them accordingly:
+\blankline
+```{r}
+total_na_count <- sum(is.na(merged_df))
+print(total_na_count)
+```
+
+Since we don't have any missing values, our actual dataframe includes the following "variables of interest"(Table 2), plus the 19 movie genre categories (which will be used for grouping movies by type):
+\blankline
+```{r, results='asis'}
+columns_of_interest <- c("item_id", "user_id", "rating", "timestamp", "age", "gender", "movie_title")
+
+column_info <- vector("list", length(columns_of_interest))
+
+for (i in seq_along(columns_of_interest)) {
+  col_name <- columns_of_interest[i]  
+  col_class <- class(merged_df[[col_name]])  
+  
+  if ("factor" %in% col_class) {
+      unique_count <- length(unique(as.character(merged_df[[col_name]])))  
+  } else {
+      unique_count <- length(unique(merged_df[[col_name]]))  
+  }
+  column_info[[i]] <- c(col_name, col_class[1], unique_count)  
+}
+
+column_info_df <- data.frame(
+  Column_Name = sapply(column_info, "[", 1),
+  Data_Type = sapply(column_info, "[", 2),
+  Unique_Count = as.integer(sapply(column_info, "[", 3)),  
+  stringsAsFactors = FALSE
+)
+print(xtable(column_info_df, caption = "Variables of Interest"),include.rownames = FALSE, comment = FALSE, size = "scriptsize")  
+```
+
+
+We still have 26 variables. In order to  facilitate dimensionality reduction and create a more manageable set, we’ll consolidate movie genres using the following approach:
+
+We’ll retain the original genre classifications for the primary categories and group all remaining genres into a category labeled "Other." To determine the "primary categories," we’ll calculate the relative frequency of each genre and sort them in descending order. We’ll then cumulatively add these frequencies until they reach around 80%. Any genres beyond this cumulative 80% threshold will be combined into the "Other" category.
+\blankline
+```{r, results='asis'}
+genre_columns <- c("unknown", "Action", "Adventure", "Animation", "Children", 
+                   "Comedy", "Crime", "Documentary", "Drama", "Fantasy", 
+                   "Film_Noir", "Horror", "Musical", "Mystery", "Romance", 
+                   "Sci_Fi", "Thriller", "War", "Western")
+
+genre_counts <- colSums(merged_df[genre_columns], na.rm = TRUE)
+total_genre_count <- sum(genre_counts)
+genre_frequency <- genre_counts / total_genre_count
+
+genre_frequency_df <- data.frame(
+  Genre = names(genre_frequency),
+  Frequency = genre_frequency
+)
+genre_frequency_df <- genre_frequency_df[order(-genre_frequency_df$Frequency), ]
+genre_frequency_df$Cumulative_Frequency <- cumsum(genre_frequency_df$Frequency)
+print(xtable(genre_frequency_df, caption = "Genre Cumulative Frequencies"), include.rownames = FALSE, comment = FALSE,size="scriptsize")
+```
+    
+
+
+We can see that 10 genres corresponds to around 90% of the genre counts. So we will maintain the original genre classifications until the cumulative frequency reaches 82% and group the remaining ones as "Other" genre.
+\blankline      
+```{r, results='asis'}
+primary_genres <- genre_frequency_df$Genre[genre_frequency_df$Cumulative_Frequency <= 0.82]
+merged_df$Other <- 0 
+genre_matrix <- merged_df[genre_columns]  
+merged_df$Other <- as.integer(rowSums(genre_matrix[, !colnames(genre_matrix) %in% primary_genres]) > 0)
+merged_df[merged_df$Other == 1, genre_columns[!genre_columns %in% primary_genres]] <- 0
+genre_columns<-c(primary_genres, "Other")
+merged_df <- merged_df[, c("user_id", "item_id", "rating", "timestamp", "age", "gender", "movie_title", genre_columns)]
+```
+            
+So, our final dataframe has the following structure:               
+\blankline                  
+```{r}
+str(merged_df)
+```
+
+[Go back to Top](#introduction)
+
+# 3. Descriptive Statistics
+
+## 3.1. - Univariate Analysis
+
+In this section we will individually analize the most relevant features:
+\blankline
+```{r}
+library(ggplot2)
+```
+
+### Rating Distribution
+
+Let's calculate some statistics for *rating*:
+\blankline
+```{r, results='asis'}
+rating <- merged_df$rating
+mode_rating <- as.integer(names(sort(table(rating), decreasing = TRUE)[1]))
+median_rating <- as.integer(median(as.integer(as.character(rating))))
+range_rating <- as.integer(range(as.integer(as.character(rating))))
+percentiles <- as.integer(quantile(as.integer(as.character(rating)), probs = c(0.25, 0.5, 0.75)))
+
+stats_df <- data.frame(
+  Statistic = c("Mode", "Median", "25th Percentile", "50th Percentile", "75th Percentile", 
+                "Min Rating", "Max Rating"),
+  Value = c(mode_rating, median_rating, percentiles[1], percentiles[2], percentiles[3],
+            range_rating[1], range_rating[2])
+)
+print(xtable(stats_df, caption = "Rating Statistics"),include.rownames = FALSE, comment = FALSE, size="scriptsize")
+```
+Creating frequency tables:
+\blankline
+```{r, results='asis'}
+freq_dist <- table(rating)
+relative_freq <- prop.table(freq_dist)
+
+freq_table <- data.frame(
+  Rating = as.integer(names(freq_dist)), 
+  Frequency = as.integer(freq_dist),    
+  Relative_Frequency = round(as.numeric(relative_freq), 4) 
+)
+print(xtable(freq_table, caption = "Rating Frequencies"),include.rownames = FALSE,comment = FALSE,size="scriptsize")
+```
+
+
+Plot the rating frequency distribution:        
+\blankline
+```{r, fig.align='center', fig.width=4, fig.height=3}
+ggplot(freq_table, aes(x = factor(Rating), y = Relative_Frequency)) +
+  geom_bar(stat = "identity", fill = "orange") +  
+  labs(title = "Distribution of Ratings", x = "Rating", y = "Relative Frequency") +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + 
+  theme_classic()+ 
+ theme(
+  plot.title = element_text(hjust = 0.5)  
+)
+```
+
+###  User Age Distribution
+
+We can do the same for the *age* feature, but as this is a **continuous** variable, we will calculate and plot different statistics:   
+\blankline   
+```{r, results='asis'}
+age <- merged_df$age
+mean_age <- mean(age, na.rm = TRUE) 
+median_age <- median(age, na.rm = TRUE)  
+range_age <- range(age, na.rm = TRUE) 
+std_age<-sd(age)
+percentiles_age <- quantile(age, probs = c(0.25, 0.5, 0.75), na.rm = TRUE) 
+
+age_stats_df <- data.frame(
+  Statistic = c("Mean", "Median", "25th Percentile", "50th Percentile", "75th Percentile", 
+                "Min Age", "Max Age","Standard Deviation"),
+   Value = round(c(mean_age, median_age, percentiles_age[1], percentiles_age[2], percentiles_age[3],
+                  range_age[1], range_age[2],std_age), 4)  
+)
+print(xtable(age_stats_df, caption = "Age Statistics"), include.rownames = FALSE, comment = FALSE,size="scriptsize")
+```
+       
+Plot the age distribution of users:    
+\blankline 
+```{r fig.width=8, fig.height=3, fig.align='center'}
+library(gridExtra) 
+histogram_plot <- ggplot(users, aes(x = age)) +
+  geom_histogram(binwidth = 5, fill = "lightblue", color = "black") +
+  labs(title = "Age Distribution of Users", x = "Age", y = "Frequency") +
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5)) 
+
+boxplot_plot <- ggplot(users, aes(x = "", y = age)) +
+  geom_boxplot(fill = "lightblue") +
+  labs(title = "Boxplot of Users' Age", x = "", y = "Age") +
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5))  # Center the title
+grid.arrange(histogram_plot, boxplot_plot, ncol = 2)
+```
+
+### User Gender Distribution
+
+Since gender is a categorical variable we will summarize it as a frequency count:
+\blankline
+```{r, results='asis'}
+gender <- merged_df$gender
+freq_table <- table(gender)  
+relative_freq <- prop.table(freq_table) 
+gender_stats_df <- data.frame(
+  Gender = names(freq_table),
+  Frequency = as.integer(freq_table),
+  Relative_Frequency = round(as.numeric(relative_freq), 4) 
+)
+print(xtable(gender_stats_df, caption = "Gender Statistics"), include.rownames = FALSE, comment = FALSE,size="scriptsize")
+```
+
+```{r, fig.align='center', fig.width=4, fig.height=3}
+ggplot(gender_stats_df, aes(x = Gender, y = Relative_Frequency, fill = Gender)) +
+  geom_bar(stat = "identity") +  
+  labs(title = "Gender Distribution of Users", x = "Gender", y = "Relative Frequency") +
+  theme_classic() +
+  theme(legend.position = "none") +  
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_x_discrete(labels = c("M" = "Male", "F" = "Female")) + 
+  scale_fill_manual(values = c("M" = "#1f77b4", "F" = "#ff7f0e"),  
+                    labels = c("M" = "Male", "F" = "Female"))
+```
+
+### Movie Genre Distribution  
+
+Concerning Movie Genre we will calculate each genre's frequency (according to the actual gender categories) and plot the most frequent in descending order:
+\blankline
+```{r, results='asis'}
+genre_counts <- colSums(merged_df[genre_columns] == 1)
+
+genre_df <- data.frame(
+  Genre = names(genre_counts),
+  Count = as.integer(genre_counts),
+  stringsAsFactors = FALSE 
+)
+print(xtable(genre_df, caption = "Count of Genre"), include.rownames = FALSE, comment = FALSE,size="scriptsize")
+```
+
+```{r, fig.align='center', fig.width=5, fig.height=3}
+ggplot(genre_df, aes(x = reorder(Genre, -Count), y = Count, fill = Genre)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Movie Genre Distribution", x = "Genre", y = "Number of Movies") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), 
+        plot.title = element_text(hjust = 0.5)) 
+```
+
+[Go back to Top](#introduction)
+
+## 3.2. - Bivariate Analysis
+
+In this section we will try to examine relationships between pairs of features.   
+    
+
+First let's try to know better our users and see their average age by gender:  
+     
+
+### Mean User Age by Gender
+\blankline
+```{r, results='asis'}
+mean_age <- tapply(merged_df$age, merged_df$gender, mean, na.rm = TRUE)
+sd_age <- tapply(merged_df$age, merged_df$gender, sd, na.rm = TRUE)
+age_summary <- data.frame(
+  gender = names(mean_age),
+  mean_age = as.numeric(mean_age),
+  sd_age = as.numeric(sd_age)
+)
+print(xtable(age_summary, caption = "Mean Age by Gender"),include.rownames = FALSE, comment = FALSE,size="scriptsize")
+```
+
+```{r, fig.align='center', fig.width=4, fig.height=3}
+ggplot(age_summary, aes(x = gender, y = mean_age, fill = gender)) +
+  geom_bar(stat = "identity") +
+  geom_errorbar(aes(ymin = mean_age - sd_age, ymax = mean_age + sd_age), width = 0.2) +
+  labs(title = "Mean Age by Gender with Standard Deviation", y = "Mean Age") +
+  scale_x_discrete(labels = c("M" = "Male", "F" = "Female")) +  
+  scale_fill_manual(values = c("M" = "#1f77b4", "F" = "#ff7f0e"),  
+                    labels = c("M" = "Male", "F" = "Female")) + 
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme_classic()
+```
+
+### Ratings by Age Group
+
+To determine if there are differences in rating patterns by age group — that is, if certain age groups tend to favor specific ratings — we will categorize users by age groups and analyze whether there are significant differences in the distribution of ratings given by each group
+\blankline
+```{r, results='asis'}
+merged_df$age_group <- cut(merged_df$age, 
+                            breaks = c(0, 18, 25, 35, 45, 55, 65, Inf), 
+                            labels = c("Under 18", "18-25", "26-35", "36-45", "46-55", "56-65", "65+"),
+                            right = FALSE)
+rating_age_table <- table(merged_df$age_group, merged_df$rating)
+print(xtable(rating_age_table, caption = "Count of Ratings By Age group"), comment = FALSE,size="scriptsize")
+```
+
+```{r, results='asis'}
+proportions <- prop.table(rating_age_table, margin = 1)
+print(xtable(proportions, caption = "Rating Proportion by Age group"), comment = FALSE,size="scriptsize")
+rating_age_df <- as.data.frame(proportions)
+colnames(rating_age_df) <- c("Age_Group", "Rating", "Proportion")
+```
+
+
+```{r, fig.align='center', fig.width=5, fig.height=3}
+ggplot(rating_age_df, aes(x = Age_Group, y = Proportion, fill = Rating)) +
+  geom_bar(stat = "identity", color = "black") +  
+  labs(title = "Proportion of Ratings by Age Group", 
+       x = "Age Group", 
+       y = "Proportion") +
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_fill_brewer(palette = "Set3") 
+```
+**We observe that users in older age groups tend to give slightly fewer low ratings (1) and more high ratings (4) compared to those in younger age groups**
+
+### Most Seen Movie Genre by Age Group
+
+Next, we will analyze how users in each age group categorize the movies they have watched across the available genres. To do this, we will examine the distribution of movie genres viewed by each age group to identify genre preferences.
+\blankline
+```{r, results='asis'}
+library(reshape2)
+age_genre_df <- data.frame(age_group = merged_df$age_group, merged_df)
+
+genre_counts <- sapply(genre_columns, function(genre) {
+  tapply(age_genre_df[[genre]], age_genre_df$age_group, sum)
+})
+
+genre_counts_df <- as.data.frame(genre_counts)
+genre_counts_df$age_group <- rownames(genre_counts_df)  
+rownames(genre_counts_df) <- NULL  
+genre_counts_df <- genre_counts_df[, c("age_group", genre_columns)]  
+
+print(xtable(genre_counts_df, caption = "Count of Gender Classifications By Age Group"), include.rownames = FALSE, comment = FALSE,size="scriptsize")
+```
+```{r, fig.align='center', fig.width=8, fig.height=4}
+total_counts <- rowSums(genre_counts_df[, sapply(genre_counts_df, is.numeric)])
+
+long_genre_counts_df <- melt(genre_counts_df, id.vars = "age_group", variable.name = "Genre", 
+                             value.name = "Count")
+
+long_genre_counts_df$Proportion <- long_genre_counts_df$Count / ave(long_genre_counts_df$Count, 
+                                                     long_genre_counts_df$age_group, FUN = sum)
+
+ggplot(long_genre_counts_df, aes(x = age_group, y = Proportion, fill = Genre)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.9), color = "black", width = 0.65) +  
+  labs(title = "Most Seen Movie Genres by Age Group (Proportion)",
+       x = "Age Group",
+       y = "Proportion of Ratings") +
+  scale_y_continuous(breaks = seq(0, 0.3, by = 0.1), limits = c(0, 0.3)) + 
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),  
+        legend.position = "right", 
+        legend.text = element_text(size = 8), 
+        legend.title = element_text(size = 10), 
+        legend.key.size = unit(0.5, "cm")) +  
+ scale_fill_brewer(palette = "Spectral") + 
+  theme(axis.text.y = element_text(size = 10)) 
+```
+
+**As expected :), we can see that users in higher age groups tend more to "Drama" compared to those in lower age groups**
+
+### Most Seen Movie Genre By User Gender   
+
+Using the same approach by Gender:
+\blankline
+```{r, fig.align='center', fig.width=8, fig.height=3}
+
+genre_counts_by_gender <- sapply(genre_columns, function(genre) {
+  tapply(merged_df[[genre]], merged_df$gender, sum, na.rm = TRUE)
+})
+
+genre_counts_df <- as.data.frame(genre_counts_by_gender)
+genre_counts_df$Gender <- rownames(genre_counts_df)  
+rownames(genre_counts_df) <- NULL  
+
+long_genre_counts_df <- melt(genre_counts_df, id.vars = "Gender", variable.name = "Genre", value.name = "Count")
+
+long_genre_counts_df$Proportion <- long_genre_counts_df$Count / ave(long_genre_counts_df$Count, long_genre_counts_df$Gender, FUN = sum)
+
+long_genre_counts_df$Genre <- factor(long_genre_counts_df$Genre, levels = unique(long_genre_counts_df$Genre))
+
+gender_labels <- c("M" = "Male", "F" = "Female")
+
+ggplot(long_genre_counts_df, aes(x = "", y = Proportion, fill = Genre)) +
+  geom_bar(stat = "identity", width = 1, color = "white") +
+  coord_polar("y") +  # Convert to pie chart
+  facet_wrap(~ Gender, ncol = 2, labeller = labeller(Gender = gender_labels)) + 
+  labs(title = "Most Seen Movie Genres by Gender",
+       x = NULL, 
+       y = NULL) +
+  theme_void() + 
+  scale_fill_brewer(palette = "Spectral") + 
+  geom_text(aes(label = scales::percent(Proportion)), position = position_stack(vjust = 0.5), size = 2) + 
+  theme(plot.title = element_text(hjust = 0.5), 
+        strip.text = element_text(size = 11))  
+
+```
+\blankline
+**We can conclude that both genders share a very similar genre profile regarding the movies they have watched, with only slight variations in the proportions of each genre. Notably, "Drama" is the most frequently watched genre**
+
+[Go back to Top](#introduction)
+
+# 4. Multivariate Analysis
+
+## 4.1 - HeatMaps
+
+If we consider *rating* as a numeric variable instead of a factor and calculate the average rating by age group, we can represent the variation in average ratings by movie genre and age group as a heatmap:    
+\blankline    
+```{r, fig.align='center', fig.width=4, fig.height=3}
+
+merged_df$rating_numeric <- as.numeric(as.character(merged_df$rating))
+
+age_groups <- cut(merged_df$age, 
+                  breaks = c(0, 18, 25, 35, 45, 55, 65, Inf), 
+                  labels = c("Under 18", "18-25", "26-35", "36-45", "46-55", "56-65", "65+"),
+                  right = FALSE)
+
+age_genre_df <- data.frame(age_group = age_groups, merged_df)
+
+heatmap_data <- data.frame(Age_Group = character(),
+                           Genre = character(),
+                           Avg_Rating = numeric(),
+                           stringsAsFactors = FALSE)
+
+for (genre in genre_columns) {
+  genre_filtered <- age_genre_df[age_genre_df[[genre]] == 1, ]  
+  if (nrow(genre_filtered) > 0) { 
+    avg_ratings <- aggregate(rating_numeric ~ age_group, data = genre_filtered, FUN = mean, na.rm = TRUE)
+    avg_ratings$Genre <- genre
+    colnames(avg_ratings) <- c("Age_Group", "Avg_Rating", "Genre")
+    heatmap_data <- rbind(heatmap_data, avg_ratings)
+  }
+}
+ggplot(heatmap_data, aes(x = Age_Group, y = Genre, fill = Avg_Rating)) +
+  geom_tile(color = "white") +  
+  scale_fill_gradient(low = "yellow", high = "red") + 
+  labs(title = "Average Ratings by Genre and Age Group", 
+       x = "Age Group", 
+       y = "Movie Genre", 
+       fill = "Avg Rating") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  theme(plot.title = element_text(hjust = 0.5,size=11))
+```
+**The heatmap analysis suggests that, across nearly all age groups (with a possible exception in the 65+ group), movies labeled as "War" receive the highest average ratings.**
+\blankline
+
+If we do the same by Gender:
+\blankline
+```{r, fig.align='center', fig.width=4, fig.height=3}
+heatmap_data <- data.frame(Gender = character(),
+                           Genre = character(),
+                           Avg_Rating = numeric(),
+                           stringsAsFactors = FALSE)
+merged_df$rating_numeric <- as.numeric(merged_df$rating)
+
+for (genre in genre_columns) {
+  genre_filtered <- merged_df[merged_df[[genre]] == 1, ]
+  avg_ratings <- aggregate(rating_numeric ~ gender, data = genre_filtered, FUN = mean, na.rm = TRUE)
+  avg_ratings$Genre <- genre
+  colnames(avg_ratings) <- c("Gender", "Avg_Rating", "Genre")
+  heatmap_data <- rbind(heatmap_data, avg_ratings)
+}
+ggplot(heatmap_data, aes(x = Gender, y = Genre, fill = Avg_Rating)) +
+  geom_tile(color = "white") +  
+  scale_fill_gradient(low = "yellow", high = "red") +  
+  labs(title = "Average Ratings by Movie Genre and User Gender", 
+       x = "Gender", 
+       y = "Movie Genre", 
+       fill = "Avg Rating") +
+  scale_x_discrete(labels = c("M" = "Male", "F" = "Female")) + 
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5,size=11)) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+**We can draw the same conclusion, this time with potentially stronger evidence: both genders assign the highest average ratings to movies categorized as "War".**
+
+
+## 4.2 - Pairwise Correlation Analysis
+
+The objective of this analysis is to explore any existing relationships among multiple numeric variables.
+
+To accomplish this, we will utilize a correlation matrix to assess potential connections between ratings, age, and timestamp (which will be converted to a numeric format).
+
+This approach may reveal patterns or anomalies in user behavior. 
+\blankline   
+```{r, results='asis'}
+merged_df$timestamp_numeric <- as.numeric(as.POSIXct(merged_df$timestamp))
+selected_columns <- merged_df[, c("rating_numeric", "age", "timestamp_numeric")]  
+
+correlation_matrix <- cor(selected_columns, use = "complete.obs")
+print(xtable(correlation_matrix, caption = "Correlation Matrix"), comment = FALSE,size="scriptsize")
+```
+
+```{r, fig.align='center', fig.width=5, fig.height=3}
+melted_correlation <- melt(correlation_matrix)
+
+ggplot(melted_correlation, aes(Var1, Var2, fill = value)) +
+  geom_tile(color = "black") +  # Black borders for tiles
+  geom_text(aes(label = round(value, 2)), color = "black", size = 4) +  
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+                       midpoint = 0, limit = c(-1, 1), 
+                       name = "Correlation") +
+  labs(title = "Pairwise Correlation Matrix", x = "Variables", y = "Variables") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+Rating Numeric vs. Age:\
+Interpretation: There is a very weak positive correlation (0.05) between ratings and age. This suggests that older users may rate movies slightly higher, but the relationship is not strong enough to be considered significant.
+
+Rating Numeric vs. Timestamp:\
+Interpretation: There is a negligible negative correlation (0.01) between ratings and the timestamp. This suggests that as time progresses (perhaps indicating more recent ratings), there isn't a clear trend in rating scores; the relationship is effectively zero.
+
+Age vs. Timestamp:\
+Interpretation: There is a weak positive correlation (0.16) between age and the timestamp. This could suggest that older users are more likely to have ratings spread out over time or engage with the platform for longer durations, but again, the correlation is weak.
+The strongest correlation is between age and timestamp, but it is still weak (0.16).\
+This indicates a minor relationship that older users might be using the platform over a longer period. Rating and age have a very weak positive correlation, indicating a slight tendency for older users to give higher ratings, but it's not strong enough to draw any meaningful conclusions.
+
+The rating and timestamp correlation is negligible, suggesting no apparent relationship between how ratings change over time.
+
+[Go back to Top](#introduction)
+
+# 5. Conclusions
+
+As anticipated, the Exploratory Data Analysis (EDA) provided valuable insights into the distribution of data and revealed aspects of its underlying structure. Specifically, it has helped us understand user rating behavior, the distribution of movie genres, and how demographic factors such as age and gender influence movie preferences.
+
+However, as expected, this step alone was not sufficient to uncover strong correlations or to provide comprehensive explanations for the development of user preference profiles.  
+This is where recommendation models, particularly those utilizing Singular Value Decomposition (SVD), come into play.  
+These models will be developed in future work and will be integral to the next steps of this process.  
+
+[Go back to Top](#introduction)
+
+# 6. References
+
+
+
+
