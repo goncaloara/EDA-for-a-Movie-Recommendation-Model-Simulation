@@ -1,7 +1,7 @@
 ---
 title: "Exploratory Data Analysis - _MovieLens_ Dataset"
 subtitle: "A preliminary EDA for a Movie Recommendation Model Simulation"
-author: "Francisco Silva, Gonçalo Araújo"
+author: "Francisco Silva e Gonçalo Araújo"
 date: "`r Sys.Date()`"
 output:
   pdf_document:
